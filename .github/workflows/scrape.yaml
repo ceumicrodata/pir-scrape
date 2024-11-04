@@ -1,0 +1,102 @@
+name: Scrape PIR Data
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Scrape data
+        run: |
+          import requests
+          import csv
+          from datetime import datetime
+
+          def fetch_page(page_number):
+              url = f"https://www.allamkincstar.gov.hu/bo-connector/api/ktorzs/getPirItems"
+              params = {
+                  "pager.pageNumber": page_number,
+                  "pager.pageSize": 50,
+                  "pager.properties": "name",
+                  "pager.direction": "ASC",
+                  "query.queryType": "NAME_SEARCH",
+                  "query.organizationType": "FINANCIAL_BODIES",
+                  "query.name.matchMode": "STARTS_WITH",
+                  "query.name.term": "",
+                  "query.subjectState": "BOTH"
+              }
+              
+              response = requests.get(url, params=params)
+              return response.json()
+
+          def extract_fields(item):
+              return {
+                  'id': item.get('id'),
+                  'pir': item.get('pir'),
+                  'name': item.get('name'),
+                  'ceased': item.get('ceased'),
+                  'taxNumber': item.get('taxNumber'),
+                  'kshNumber': item.get('kshNumber'),
+                  'ahtiNumber': item.get('ahtiNumber'),
+                  'ohNumber': item.get('ohNumber'),
+                  'address': item.get('address'),
+                  'excName': item.get('excName'),
+                  'excDate': item.get('excDate')
+              }
+
+          # Fetch first page to get total pages
+          first_page = fetch_page(1)
+          total_pages = first_page['totalPages']
+          
+          # Prepare CSV file
+          timestamp = datetime.now().strftime('%Y%m%d')
+          filename = f'pir_data_{timestamp}.csv'
+          
+          with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+              fieldnames = ['id', 'pir', 'name', 'ceased', 'taxNumber', 'kshNumber', 
+                          'ahtiNumber', 'ohNumber', 'address', 'excName', 'excDate']
+              writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+              writer.writeheader()
+              
+              # Write first page
+              for item in first_page['content']:
+                  writer.writerow(extract_fields(item))
+              
+              # Fetch and write remaining pages
+              for page in range(2, total_pages + 1):
+                  try:
+                      data = fetch_page(page)
+                      for item in data['content']:
+                          writer.writerow(extract_fields(item))
+                      print(f"Processed page {page}/{total_pages}")
+                  except Exception as e:
+                      print(f"Error processing page {page}: {str(e)}")
+                      continue
+          
+          print(f"Data saved to {filename}")
+        shell: python
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add *.csv
+          git commit -m "Update PIR data $(date +'%Y-%m-%d')" || exit 0
+          git push
