@@ -37,7 +37,7 @@ jobs:
                   "pager.properties": "name",
                   "pager.direction": "ASC",
                   "query.queryType": "NAME_SEARCH",
-                  "query.organizationType": "FINANCIAL_BODIES",
+                  "query.organizationType": "ALL",
                   "query.name.matchMode": "STARTS_WITH",
                   "query.name.term": "",
                   "query.subjectState": "BOTH"
